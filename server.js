@@ -374,6 +374,48 @@ app.post('/storefront/subscribe', async (req, res) => {
     }
 
     console.log(`[BIS] Subscriber saved: ${email} | ${region} → ${warehouse} | ${variantGid}`);
+
+ 
+    // Subscribe profile to Klaviyo list for email consent
+try {
+  await axios.post(
+    'https://a.klaviyo.com/api/profile-subscription-bulk-create-jobs/',
+    {
+      data: {
+        type: 'profile-subscription-bulk-create-job',
+        attributes: {
+          profiles: {
+            data: [{
+              type: 'profile',
+              attributes: {
+                email: email,
+                subscriptions: {
+                  email: { marketing: { consent: 'SUBSCRIBED' } }
+                }
+              }
+            }]
+          }
+        },
+        relationships: {
+          list: { data: { type: 'list', id: 'W552hZ' } }
+        }
+      }
+    },
+    {
+      headers: {
+        Authorization: `Klaviyo-API-Key ${KLAVIYO_PRIVATE_API_KEY}`,
+        'Content-Type': 'application/json',
+        revision: '2023-12-15'
+      }
+    }
+  );
+  console.log(`[BIS] Subscribed ${email} to Klaviyo list`);
+} catch (err) {
+  console.warn(`[BIS] Klaviyo subscribe failed: ${err.message}`);
+}
+
+
+    
     return res.status(200).json({ success: true, warehouse, region });
 
   } catch (err) {
