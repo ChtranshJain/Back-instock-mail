@@ -23,6 +23,7 @@ app.use((req, res, next) => {
   next();
 });
 
+
 const PORT = process.env.PORT || 3000;
 
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
