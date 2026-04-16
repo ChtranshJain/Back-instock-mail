@@ -288,7 +288,7 @@ app.post('/trigger-manual', async (req, res) => {
 
 // ── Route: Storefront Subscribe (Klaviyo interceptor) ─────────────────────────
 app.post('/storefront/subscribe', async (req, res) => {
-  const { email, variant_id, region } = req.body;
+  const { email, variant_id, region, product_title, variant_title } = req.body;
 
   if (!email || !variant_id || !region) {
     return res.status(400).json({ error: 'Missing required fields: email, variant_id, region' });
