@@ -132,37 +132,37 @@ async function markSubscriberNotified(id) {
 }
 
 // ── Trigger Klaviyo Event ─────────────────────────────────────────────────────
-async function triggerKlaviyoEvent(subscriber, variantGid) {
+async function sendBISEmailDirect(subscriber, variantGid) {
   const numericVariantId = variantGid.split('/').pop();
   await axios.post(
-    'https://a.klaviyo.com/api/events/',
+    'https://a.klaviyo.com/api/messages/send',
     {
       data: {
-        type: 'event',
+        type: 'message',
         attributes: {
-          metric: { data: { type: 'metric', attributes: { name: 'Back In Stock' } } },
-          profile: { data: { type: 'profile', attributes: { email: subscriber.email } } },
-          properties: {
+          channel: 'email',
+          to: [{ email: subscriber.email }],
+          template_id: 'XTmHEm',
+          context: {
             product_title: subscriber.product_title,
             variant_title: subscriber.variant_title,
             variant_id: numericVariantId,
             warehouse: subscriber.warehouse,
-          },
-          value: 0,
-          unique_id: `bis-${subscriber.email}-${numericVariantId}-${Date.now()}`,
-          time: new Date().toISOString(),
-        },
-      },
+          }
+        }
+      }
     },
     {
       headers: {
         Authorization: `Klaviyo-API-Key ${KLAVIYO_PRIVATE_API_KEY}`,
         'Content-Type': 'application/json',
-        revision: '2023-12-15',
-      },
+        revision: '2023-12-15'
+      }
     }
   );
+  console.log(`[BIS] Email sent directly to ${subscriber.email}`);
 }
+
 
 // ── Core Notification Logic ───────────────────────────────────────────────────
 async function processRestock(variantGid, warehouse) {
@@ -172,7 +172,8 @@ async function processRestock(variantGid, warehouse) {
   const results = { triggered: 0, failed: 0, errors: [] };
   for (const sub of subscribers) {
     try {
-      await triggerKlaviyoEvent(sub, variantGid);
+      await sendBISEmailDirect(sub, variantGid);
+
       await markSubscriberNotified(sub.id);
       results.triggered++;
       console.log(`[BIS] Notified: ${sub.email}`);
