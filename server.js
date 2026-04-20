@@ -39,9 +39,21 @@ app.use('/webhooks/inventory-update', express.raw({ type: 'application/json' }))
 app.use(express.json());
 
 // ── Health Check ──────────────────────────────────────────────────────────────
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/health', async (req, res) => {
+  let shopifyOk = false;
+  try {
+    const data = await shopifyGraphQL(`{ shop { name } }`);
+    shopifyOk = !!data?.shop?.name;
+  } catch(e) {
+    shopifyOk = false;
+  }
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    shopify_token_valid: shopifyOk
+  });
 });
+
 
 // ── Shopify GraphQL Helper ────────────────────────────────────────────────────
 async function shopifyGraphQL(query, variables = {}) {
