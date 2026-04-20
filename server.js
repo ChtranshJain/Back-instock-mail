@@ -288,7 +288,7 @@ app.post('/trigger-manual', async (req, res) => {
 
 // ── Route: Storefront Subscribe (Klaviyo interceptor) ─────────────────────────
 app.post('/storefront/subscribe', async (req, res) => {
-  const { email, variant_id, region, product_title, variant_title } = req.body;
+  const { email, variant_id, region, product_title, variant_title, marketing_consent } = req.body;
 
   if (!email || !variant_id || !region) {
     return res.status(400).json({ error: 'Missing required fields: email, variant_id, region' });
@@ -376,43 +376,45 @@ app.post('/storefront/subscribe', async (req, res) => {
     console.log(`[BIS] Subscriber saved: ${email} | ${region} → ${warehouse} | ${variantGid}`);
 
  
-    // Subscribe profile to Klaviyo list for email consent
-try {
-  await axios.post(
-    'https://a.klaviyo.com/api/profile-subscription-bulk-create-jobs/',
-    {
-      data: {
-        type: 'profile-subscription-bulk-create-job',
-        attributes: {
-          profiles: {
-            data: [{
-              type: 'profile',
-              attributes: {
-                email: email,
-                subscriptions: {
-                  email: { marketing: { consent: 'SUBSCRIBED' } }
+    // Subscribe profile to Klaviyo list for email consent 
+    if (marketing_consent) {
+        try {
+          await axios.post(
+            'https://a.klaviyo.com/api/profile-subscription-bulk-create-jobs/',
+            {
+              data: {
+                type: 'profile-subscription-bulk-create-job',
+                attributes: {
+                  profiles: {
+                    data: [{
+                      type: 'profile',
+                      attributes: {
+                        email: email,
+                        subscriptions: {
+                          email: { marketing: { consent: 'SUBSCRIBED' } }
+                        }
+                      }
+                    }]
+                  }
+                },
+                relationships: {
+                  list: { data: { type: 'list', id: 'W552hZ' } }
                 }
               }
-            }]
-          }
-        },
-        relationships: {
-          list: { data: { type: 'list', id: 'W552hZ' } }
+            },
+            {
+              headers: {
+                Authorization: `Klaviyo-API-Key ${KLAVIYO_PRIVATE_API_KEY}`,
+                'Content-Type': 'application/json',
+                revision: '2023-12-15'
+              }
+            }
+          );
+          console.log(`[BIS] Subscribed ${email} to Klaviyo list`);
+        } catch (err) {
+          console.warn(`[BIS] Klaviyo subscribe failed: ${err.message}`);
         }
-      }
-    },
-    {
-      headers: {
-        Authorization: `Klaviyo-API-Key ${KLAVIYO_PRIVATE_API_KEY}`,
-        'Content-Type': 'application/json',
-        revision: '2023-12-15'
-      }
-    }
-  );
-  console.log(`[BIS] Subscribed ${email} to Klaviyo list`);
-} catch (err) {
-  console.warn(`[BIS] Klaviyo subscribe failed: ${err.message}`);
-}
+    } 
 
 
     
