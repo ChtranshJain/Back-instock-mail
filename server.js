@@ -7,7 +7,7 @@ const axios = require('axios');
 
 const app = express();
 
-// CORS — allow requests from Elizabetta storefront
+// CORS
 app.use((req, res, next) => {
   const allowedOrigins = [
     'https://elizabetta.net',
@@ -24,8 +24,6 @@ app.use((req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-
-const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_SHOP_DOMAIN;
 const SHOPIFY_WEBHOOK_SECRET = process.env.SHOPIFY_WEBHOOK_SECRET;
 const KLAVIYO_PRIVATE_API_KEY = process.env.KLAVIYO_PRIVATE_API_KEY;
@@ -33,46 +31,124 @@ const EXTERNAL_WEBHOOK_SECRET = process.env.EXTERNAL_WEBHOOK_SECRET;
 const TEXAS_LOCATION_ID = process.env.TEXAS_LOCATION_ID;
 const JJ_POLAND_LOCATION_ID = process.env.JJ_POLAND_LOCATION_ID;
 const JJ_UK_LOCATION_ID = process.env.JJ_UK_LOCATION_ID;
+const SHOPIFY_API_KEY = process.env.SHOPIFY_API_KEY;
+const SHOPIFY_API_SECRET = process.env.SHOPIFY_API_SECRET;
 
-// Raw body needed for HMAC verification on Shopify webhook route
+// ── OAuth Token Manager ───────────────────────────────────────────────────────
+// Automatically fetches and caches access token using Client ID + Secret
+// Never expires — refreshes itself if it ever gets a 401
+
+let _cachedToken = process.env.SHOPIFY_ACCESS_TOKEN || null;
+let _tokenFetching = false;
+
+async function getAccessToken() {
+  if (_cachedToken) return _cachedToken;
+  if (_tokenFetching) {
+    // Wait for ongoing fetch
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    return _cachedToken;
+  }
+
+  _tokenFetching = true;
+  try {
+    console.log('[BIS] Fetching new access token via OAuth...');
+    const response = await axios.post(
+      `https://${SHOPIFY_SHOP_DOMAIN}/admin/oauth/access_token`,
+      {
+        client_id: SHOPIFY_API_KEY,
+        client_secret: SHOPIFY_API_SECRET,
+        grant_type: 'client_credentials'
+      }
+    );
+    _cachedToken = response.data.access_token;
+    console.log('[BIS] Access token obtained successfully');
+    return _cachedToken;
+  } catch (err) {
+    console.error('[BIS] Failed to get access token:', err.response?.data || err.message);
+    // Fall back to env token if available
+    _cachedToken = process.env.SHOPIFY_ACCESS_TOKEN || null;
+    return _cachedToken;
+  } finally {
+    _tokenFetching = false;
+  }
+}
+
+// Raw body needed for HMAC verification
 app.use('/webhooks/inventory-update', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
 // ── Health Check ──────────────────────────────────────────────────────────────
+const TOKEN_FINGERPRINT = crypto
+  .createHash('md5')
+  .update(process.env.SHOPIFY_ACCESS_TOKEN || '')
+  .digest('hex')
+  .slice(0, 8);
+
 app.get('/health', async (req, res) => {
   let shopifyOk = false;
+  let shopName = '';
   try {
     const data = await shopifyGraphQL(`{ shop { name } }`);
-    shopifyOk = !!data?.shop?.name;
+    shopName = data?.shop?.name || '';
+    shopifyOk = !!shopName;
   } catch(e) {
     shopifyOk = false;
   }
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    shopify_token_valid: shopifyOk
+    shopify_token_valid: shopifyOk,
+    shopify_token_fingerprint: TOKEN_FINGERPRINT,
+    shop: shopName,
+    uptime_seconds: Math.floor(process.uptime())
   });
 });
-
 
 // ── Shopify GraphQL Helper ────────────────────────────────────────────────────
 async function shopifyGraphQL(query, variables = {}) {
   const url = `https://${SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/graphql.json`;
-  const response = await axios.post(
-    url,
-    { query, variables },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-      },
+  const token = await getAccessToken();
+
+  try {
+    const response = await axios.post(
+      url,
+      { query, variables },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': token,
+        },
+      }
+    );
+    if (response.data.errors?.length) {
+      throw new Error(`Shopify GraphQL error: ${response.data.errors.map(e => e.message).join(', ')}`);
     }
-  );
-  if (response.data.errors?.length) {
-    throw new Error(`Shopify GraphQL error: ${response.data.errors.map(e => e.message).join(', ')}`);
+    return response.data.data;
+  } catch (err) {
+    // If 401 — clear cached token and retry once with fresh token
+    if (err.response?.status === 401) {
+      console.warn('[BIS] 401 detected — clearing cached token and retrying...');
+      _cachedToken = null;
+      const freshToken = await getAccessToken();
+      const retry = await axios.post(
+        url,
+        { query, variables },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Shopify-Access-Token': freshToken,
+          },
+        }
+      );
+      if (retry.data.errors?.length) {
+        throw new Error(`Shopify GraphQL error: ${retry.data.errors.map(e => e.message).join(', ')}`);
+      }
+      return retry.data.data;
+    }
+    throw err;
   }
-  return response.data.data;
 }
+
 
 // ── Fetch Matching Subscribers ────────────────────────────────────────────────
 async function fetchMatchingSubscribers(variantGid, warehouse) {
