@@ -461,7 +461,7 @@ app.post('/storefront/subscribe', async (req, res) => {
       return res.status(500).json({ error: errors.map(e => e.message).join(', ') });
     }
 
-    console.log(`[BIS] Subscriber saved: ${email} | ${region} → ${warehouse} | Product: ${product_title} | ${variantGid}`);
+    console.log(`[BIS] Subscriber saved: ${email} | ${region} → ${warehouse} | ${variantGid}`);
 
  
     // Subscribe profile to Klaviyo list for email consent 
