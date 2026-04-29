@@ -254,7 +254,7 @@ async function triggerKlaviyoEvent(subscriber, variantGid) {
 
 // ── Core Notification Logic ───────────────────────────────────────────────────
 async function processRestock(variantGid, warehouse) {
-  console.log(`[BIS] Restock: variant=${variantGid} warehouse=${warehouse}`);
+  console.log(`[BIS] Restock: Product: ${product_title} | variant=${variantGid} warehouse=${warehouse}`);
   const subscribers = await fetchMatchingSubscribers(variantGid, warehouse);
   console.log(`[BIS] Found ${subscribers.length} matching subscriber(s)`);
   const results = { triggered: 0, failed: 0, errors: [] };
